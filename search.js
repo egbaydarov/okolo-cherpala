@@ -40,6 +40,12 @@ AppNS.appendRows = function appendRows(messages) {
       const key = `${AppNS.bigIntToStringSafe(chId)}:${m.id}`;
       if (st.seenMessageKeys.has(key)) continue;
       st.seenMessageKeys.add(key);
+      // Only show the first message per channel
+      const chKey = AppNS.bigIntToStringSafe(chId);
+      if (st.displayedChannelIds.has(chKey)) {
+        continue;
+      }
+      st.displayedChannelIds.add(chKey);
     }
     const tr = document.createElement('tr');
     const deepLink = (channel?.username ? `https://t.me/${channel.username}/${m.id}` : `tg://openmessage?chat_id=-100${AppNS.bigIntToStringSafe(channel?.id || '')}&message_id=${m.id}`);
@@ -59,6 +65,37 @@ AppNS.appendRows = function appendRows(messages) {
     tr.dataset.title = channel?.title || '';
     tr.dataset.postId = String(m.id);
     if (m.replies?.channelId) tr.dataset.discussionChannelId = AppNS.bigIntToStringSafe(m.replies.channelId);
+    // Async check membership and color row
+    try {
+      const chKey = tr.dataset.channelId;
+      if (chKey && !AppNS.membershipStatus.has(chKey) && !AppNS.membershipPending.has(chKey)) {
+        AppNS.membershipPending.add(chKey);
+        (async () => {
+          let status = 'not';
+          try {
+            const chIdBig = AppNS.toBigIntSafe(chKey);
+            const peer = new telegram.Api.InputPeerChannel({ channelId: chIdBig, accessHash: AppNS.toBigIntSafe(tr.dataset.accessHash) });
+            const info = await AppNS.client.invoke(new telegram.Api.channels.GetParticipant({ channel: peer, participant: new telegram.Api.InputPeerSelf() }));
+            const p = info?.participant;
+            if (p && (p.className?.includes('ChannelParticipant') || p.className === 'ChannelParticipantSelf')) status = 'member';
+          } catch (e) {
+            const msg = String(e?.message || e);
+            if (/USER_BANNED|BANNED|KICKED/i.test(msg)) status = 'banned';
+          }
+          AppNS.membershipStatus.set(chKey, status);
+          AppNS.membershipPending.delete(chKey);
+          // apply light colors
+          if (status === 'member') { tr.style.background = '#e9f7ef'; }
+          else if (status === 'banned') { tr.style.background = '#fdecea'; }
+          else { tr.style.background = '#fffbe6'; }
+        })();
+      } else if (chKey) {
+        const status = AppNS.membershipStatus.get(chKey);
+        if (status === 'member') { tr.style.background = '#e9f7ef'; }
+        else if (status === 'banned') { tr.style.background = '#fdecea'; }
+        else if (status === 'not') { tr.style.background = '#fffbe6'; }
+      }
+    } catch (_) {}
     const btn = tr.querySelector('.commentBtn');
     btn.addEventListener('click', async () => {
       try {

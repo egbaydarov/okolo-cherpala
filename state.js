@@ -64,8 +64,12 @@
     targetDisplayLimit: 1000,
     channelIndex: new Map(),
     seenMessageKeys: new Set(),
+    displayedChannelIds: new Set(),
     bulkCancelRequested: false
   };
+  // Membership cache (channelId string -> 'member' | 'not' | 'banned')
+  App.membershipStatus = new Map();
+  App.membershipPending = new Set();
 })();
 
 
