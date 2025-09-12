@@ -3,7 +3,7 @@ window.App = window.App || {};
 const AppNS = window.App;
 
 (function init() {
-  const { btnConnectSaved, btnClearSession, btnStartUserLogin, btnSubmitPhone, btnSubmitCode, btnSubmitPassword, inpPhone, inpCode, inpPassword, startSearch, sendAll, bulkProgress, bulkLabel, bulkBar, downloadCsv, scrollContainer, status } = AppNS.dom;
+  const { btnConnectSaved, btnClearSession, btnStartUserLogin, btnSubmitPhone, btnSubmitCode, btnSubmitPassword, inpPhone, inpCode, inpPassword, startSearch, sendAll, stopBulk, bulkProgress, bulkLabel, bulkBar, downloadCsv, scrollContainer, status } = AppNS.dom;
 
   // Wire connect with saved session
   if (btnConnectSaved) btnConnectSaved.addEventListener('click', AppNS.ensureConnected);
@@ -67,6 +67,8 @@ const AppNS = window.App;
   });
 
   // Bulk send
+  if (stopBulk) stopBulk.addEventListener('click', () => { AppNS.searchState.bulkCancelRequested = true; AppNS.log('Bulk cancel requested'); });
+
   if (sendAll) sendAll.addEventListener('click', async () => {
     try {
       const rows = AppNS.collectRows();
@@ -76,7 +78,9 @@ const AppNS = window.App;
       const update = (done, total) => { const pct = total ? Math.round((done / total) * 100) : 0; bulkBar.style.width = pct + '%'; bulkLabel.textContent = `${done} / ${total}`; };
       update(0, rows.length);
       let sent = 0;
+      AppNS.searchState.bulkCancelRequested = false;
       for (const { tr } of rows) {
+        if (AppNS.searchState.bulkCancelRequested) { AppNS.log('Bulk send stopped by user'); break; }
         try { await AppNS.sendCommentForDataset(tr.dataset); } catch (e) { AppNS.log('Bulk send error:', e?.message || e); }
         sent += 1; update(sent, rows.length); await new Promise(r => setTimeout(r, 1000));
       }

@@ -41,6 +41,7 @@
     commentText: document.getElementById('commentText'),
     startSearch: document.getElementById('startSearch'),
     sendAll: document.getElementById('sendAll'),
+    stopBulk: document.getElementById('stopBulk'),
     bulkProgress: document.getElementById('bulkProgress'),
     bulkBar: document.getElementById('bulkBar'),
     bulkLabel: document.getElementById('bulkLabel'),
@@ -62,7 +63,8 @@
     useHashtag: false,
     targetDisplayLimit: 1000,
     channelIndex: new Map(),
-    seenMessageKeys: new Set()
+    seenMessageKeys: new Set(),
+    bulkCancelRequested: false
   };
 })();
 
