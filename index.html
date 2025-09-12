@@ -64,7 +64,6 @@
         </div>
       </div>
       <div class="actions">
-        <button id="refreshAccount" type="button">Refresh account</button>
         <button id="connectSaved" type="button">Connect with saved session</button>
         <button id="clearSession" type="button">Clear saved session</button>
       </div>
@@ -120,7 +119,8 @@
 
     <script src="./tg-min.js"></script>
     <script>
-      // --- Minimal logger ---
+      const telegram = GramJs;
+
       const $status = document.getElementById('status');
       const $log = document.getElementById('log');
       function log(...args) {
@@ -130,14 +130,11 @@
         console.log(...args);
       }
 
-      // --- Telegram client setup ---
       let resolvePhone, resolveCode, resolvePassword;
       const phoneNumber = () => new Promise((resolve) => { resolvePhone = resolve; });
       const phoneCode = () => new Promise((resolve) => { resolveCode = resolve; });
       const password = () => new Promise((resolve) => { resolvePassword = resolve; });
       function resetResolvers() { resolvePhone = null; resolveCode = null; resolvePassword = null; }
-
-      const telegram = GramJs;
 
       function getExistingSessionData() {
         var session = localStorage.getItem('account1');
@@ -151,9 +148,22 @@
           localStorage.setItem('account1', JSON.stringify(toStore));
         } catch {}
       }
+
       const maybeSaved = getExistingSessionData();
       const session = new telegram.sessions.CallbackSession(maybeSaved, onSessionUpdate);
-      const client = new telegram.TelegramClient(session, 20420825, "ee1672f1a070db396378556012f0aeda", { useWSS: true });
+      const client = new telegram.TelegramClient(
+        session,
+        20420825,
+        "ee1672f1a070db396378556012f0aeda",
+        {
+          requestRetries: 1,
+          connectionRetries: 1,
+          connectionoptions: {
+              ip: '149.154.167.50',
+              port: 443
+          },
+          useWSS: true
+        });
 
       async function ensureConnected() {
         try {
@@ -166,10 +176,12 @@
             $status.textContent = 'connected';
             return true;
           } catch (authErr) {
+            client.disconnect();
             $status.textContent = 'not authorized';
             return false;
           }
         } catch (e) {
+          client.disconnect();
           $status.textContent = 'not authorized';
           log('Connect failed (probably no saved session):', e?.message || e);
           return false;
@@ -179,7 +191,6 @@
       // --- First-time authorization flow (user login) ---
       const $btnConnectSaved = document.getElementById('connectSaved');
       const $btnClearSession = document.getElementById('clearSession');
-      const $btnRefreshAccount = document.getElementById('refreshAccount');
       const $meName = document.getElementById('meName');
       const $meBio = document.getElementById('meBio');
       const $meAvatar = document.getElementById('meAvatar');
@@ -192,7 +203,6 @@
       const $inpPassword = document.getElementById('password');
 
       $btnConnectSaved?.addEventListener('click', ensureConnected);
-      $btnRefreshAccount?.addEventListener('click', async () => { await ensureConnected(); });
       $btnClearSession?.addEventListener('click', () => {
         try {
           localStorage.clear();
@@ -222,12 +232,13 @@
             $btnSubmitPassword.onclick = () => { if (resolvePassword) { const v = $inpPassword.value || ''; log('Password submitted'); resolvePassword(v); } };
 
             await client.start({ phoneNumber, phoneCode, password, onError: (e) => log('Auth error:', e?.message || e) });
-          resetResolvers();
+            resetResolvers();
             // verify and populate account UI
             await ensureConnected();
             log('Authorization completed');
           } catch (err) {
-          resetResolvers();
+            resetResolvers();
+            client.disconnect();
             $status.textContent = 'idle';
             log('User login failed:', err?.message || String(err));
           }
