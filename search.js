@@ -42,12 +42,15 @@ AppNS.appendRows = function appendRows(messages) {
       st.seenMessageKeys.add(key);
     }
     const tr = document.createElement('tr');
+    const deepLink = (channel?.username ? `https://t.me/${channel.username}/${m.id}` : `tg://openmessage?chat_id=-100${AppNS.bigIntToStringSafe(channel?.id || '')}&message_id=${m.id}`);
+    const webLink = `https://web.telegram.org/a/#?tgaddr=${encodeURIComponent(deepLink)}`;
     tr.innerHTML = `
       <td style="padding:8px; border-bottom:1px solid #eee;">${channel?.title || channel?.username || 'Unknown channel'}</td>
       <td style="padding:8px; border-bottom:1px solid #eee;">${m.id}</td>
       <td style="padding:8px; border-bottom:1px solid #eee;">${AppNS.formatDate(m.date)}</td>
       <td style=\"padding:8px; border-bottom:1px solid #eee; max-width:480px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;\" title=\"${(m.message || '').replace(/\"/g, '\\\"')}\">${(m.message || '').slice(0, 160)}</td>
-      <td style="padding:8px; border-bottom:1px solid #eee;"><a href="${(channel?.username ? `https://t.me/${channel.username}/${m.id}` : `tg://openmessage?chat_id=-100${AppNS.bigIntToStringSafe(channel?.id || '')}&message_id=${m.id}`)}" target="_blank" rel="noopener">Open</a></td>
+      <td style="padding:8px; border-bottom:1px solid #eee;"><a href="${deepLink}" target="_blank" rel="noopener">Open</a></td>
+      <td style="padding:8px; border-bottom:1px solid #eee;"><a href="${webLink}" target="_blank" rel="noopener">Web</a></td>
       <td style="padding:8px; border-bottom:1px solid #eee;"><button class="commentBtn">Comment</button></td>
     `;
     tr.dataset.channelId = channel?.id ? AppNS.bigIntToStringSafe(channel.id) : '';

@@ -4,7 +4,7 @@ const AppNS = window.App;
 
 AppNS.tableToCsv = function tableToCsv() {
   const rows = [];
-  rows.push(['Channel', 'Msg ID', 'Date', 'Text', 'Link']);
+  rows.push(['Channel', 'Msg ID', 'Date', 'Text', 'Link', 'Web']);
   const trs = AppNS.dom.rows.querySelectorAll('tr');
   for (const tr of trs) {
     const channel = tr.children[0]?.textContent?.trim() || '';
@@ -12,7 +12,8 @@ AppNS.tableToCsv = function tableToCsv() {
     const date = tr.children[2]?.textContent?.trim() || '';
     const text = tr.children[3]?.textContent?.trim() || '';
     const link = tr.children[4]?.querySelector('a')?.href || '';
-    rows.push([channel, id, date, text, link]);
+    const web = tr.children[5]?.querySelector('a')?.href || '';
+    rows.push([channel, id, date, text, link, web]);
   }
   const csv = rows.map(r => r.map(v => {
     const s = String(v).replace(/"/g, '""');
