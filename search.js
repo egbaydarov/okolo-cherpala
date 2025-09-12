@@ -99,7 +99,7 @@ AppNS.loadNextPage = async function loadNextPage() {
       offsetRate: st.nextRate || 0,
       offsetPeer: new telegram.Api.InputPeerEmpty(),
       offsetId: st.offsetIdOffset || 0,
-      limit: 1000
+      limit: st.targetDisplayLimit ?? 100
     });
     const res = await AppNS.client.invoke(req);
     AppNS.upsertChannels(res?.chats || []);

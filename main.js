@@ -52,7 +52,7 @@ const AppNS = window.App;
     const st = AppNS.searchState;
     st.currentQuery = AppNS.dom.query.value || '';
     st.useHashtag = !!AppNS.dom.hashtag.checked;
-    st.targetDisplayLimit = Math.max(50, Math.min(5000, Number(AppNS.dom.limit.value) || 1000));
+    st.targetDisplayLimit = Math.max(10, Math.min(5000, Number(AppNS.dom.limit.value) || 1000));
     AppNS.resetResults();
     while (!st.finished && st.loadedCount < st.targetDisplayLimit) {
       await AppNS.loadNextPage();
