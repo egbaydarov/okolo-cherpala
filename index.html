@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>GramJS Login</title>
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; margin: 24px; }
+      fieldset { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin: 0 0 16px; }
+      legend { padding: 0 8px; color: #333; }
+      label { display: block; margin: 8px 0 4px; font-size: 14px; color: #333; }
+      input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; }
+      button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+      .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
+      #logWrap { border: 1px solid #eee; background: #fafafa; border-radius: 8px; padding: 12px; }
+      #status { font-weight: 600; }
+      #log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; line-height: 1.5; max-height: 260px; overflow: auto; margin: 0; }
+      small.muted { color: #666; }
+    </style>
+  </head>
+  <body>
+    <h2>cherpala.ai</h2>
+    <p><small class="muted">Enter your Telegram API credentials. You can authenticate as a user (phone + code [+ password if 2FA]) or as a bot (bot token).</small></p>
+    <fieldset>
+      <legend>User Login (Phone)</legend>
+      <label for="phone">Phone number (international format, e.g. +15551234567)</label>
+      <input id="phone" type="text" placeholder="+15551234567" autocomplete="tel">
+
+      <div class="row">
+        <div>
+          <label for="code">Code</label>
+          <input id="code" type="text" placeholder="Code from Telegram" autocomplete="one-time-code" disabled>
+        </div>
+        <div>
+          <label for="password">Password (only if 2FA is enabled)</label>
+          <input id="password" type="password" placeholder="Your 2FA password" disabled>
+        </div>
+      </div>
+
+      <div class="actions">
+        <button id="startUserLogin" type="button">Start user login</button>
+        <button id="submitPhone" type="button" disabled>Submit phone</button>
+        <button id="submitCode" type="button" disabled>Submit code</button>
+        <button id="submitPassword" type="button" disabled>Submit 2FA password</button>
+      </div>
+    </fieldset>
+
+    <div id="logWrap">
+      <div>Connection: <span id="status">idle</span></div>
+      <pre id="log"></pre>
+    </div>
+
+    <fieldset>
+      <legend>Account</legend>
+      <div class="row">
+        <div>
+          <div id="meAvatar" style="width:64px;height:64px;border-radius:50%;background:#eee;"></div>
+        </div>
+        <div>
+          <div id="meName"><small class="muted">Not authorized</small></div>
+          <div id="meBio" style="color:#666"></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="refreshAccount" type="button">Refresh account</button>
+        <button id="connectSaved" type="button">Connect with saved session</button>
+        <button id="clearSession" type="button">Clear saved session</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Settings</legend>
+      <div class="row">
+        <div>
+          <label for="searchQuery">Search query</label>
+          <input id="searchQuery" type="text" placeholder="e.g. vpn" value="впн">
+        </div>
+        <div>
+          <label for="displayLimit">Display limit (default 1000)</label>
+          <input id="displayLimit" type="number" min="50" max="5000" step="50" value="1000">
+        </div>
+      </div>
+      <div class="row">
+        <div>
+          <label><input id="hashtagMode" type="checkbox"> Treat query as hashtag</label>
+        </div>
+        <div>
+          <label for="commentText">Comment text</label>
+          <input id="commentText" type="text" placeholder="Your comment to post under items">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="startSearch" type="button">Start search</button>
+        <button id="sendAll" type="button" disabled title="Not implemented yet">Send to all</button>
+      </div>
+    </fieldset>
+
+    <fieldset>
+      <legend>Results</legend>
+      <div style="overflow:auto; max-height: 60vh; border: 1px solid #eee; border-radius: 8px;">
+        <table id="resultsTable" style="width:100%; border-collapse: collapse;">
+          <thead style="position: sticky; top: 0; background: #fafafa;">
+            <tr>
+              <th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Channel</th>
+              <th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Msg ID</th>
+              <th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Date</th>
+              <th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Text</th>
+              <th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Link</th>
+              <th style="text-align:left; padding: 8px; border-bottom: 1px solid #eee;">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <div id="loading" style="padding:8px; color:#666; display:none;">Loading…</div>
+      <div id="endOfList" style="padding:8px; color:#666; display:none;">No more results</div>
+    </fieldset>
+
+    <script src="./tg-min.js"></script>
+    <script>
+      // --- Minimal logger ---
+      const $status = document.getElementById('status');
+      const $log = document.getElementById('log');
+      function log(...args) {
+        const line = args.map(a => (typeof a === 'string' ? a : JSON.stringify(a))).join(' ');
+        $log.textContent += line + "\n";
+        $log.scrollTop = $log.scrollHeight;
+        console.log(...args);
+      }
+
+      // --- Telegram client setup ---
+      let resolvePhone, resolveCode, resolvePassword;
+      const phoneNumber = () => new Promise((resolve) => { resolvePhone = resolve; });
+      const phoneCode = () => new Promise((resolve) => { resolveCode = resolve; });
+      const password = () => new Promise((resolve) => { resolvePassword = resolve; });
+      function resetResolvers() { resolvePhone = null; resolveCode = null; resolvePassword = null; }
+
+      const telegram = GramJs;
+
+      function getExistingSessionData() {
+        var session = localStorage.getItem('account1');
+        return session ? JSON.parse(session) : undefined;
+      }
+
+      function onSessionUpdate(sessionData) {
+        try {
+          if (!sessionData) { localStorage.removeItem('account1'); return; }
+          const toStore = { ...sessionData, dcId: sessionData.mainDcId };
+          localStorage.setItem('account1', JSON.stringify(toStore));
+        } catch {}
+      }
+      const maybeSaved = getExistingSessionData();
+      const session = new telegram.sessions.CallbackSession(maybeSaved, onSessionUpdate);
+      const client = new telegram.TelegramClient(session, 20420825, "ee1672f1a070db396378556012f0aeda", { useWSS: true });
+
+      async function ensureConnected() {
+        try {
+          $status.textContent = 'connecting…';
+          await client.connect({});
+          // Verify authorization with a lightweight call
+          try {
+            const me = await client.invoke(new telegram.Api.users.GetFullUser({ id: new telegram.Api.InputUserSelf() }));
+            updateAccountUI(me);
+            $status.textContent = 'connected';
+            return true;
+          } catch (authErr) {
+            $status.textContent = 'not authorized';
+            return false;
+          }
+        } catch (e) {
+          $status.textContent = 'not authorized';
+          log('Connect failed (probably no saved session):', e?.message || e);
+          return false;
+        }
+      }
+
+      // --- First-time authorization flow (user login) ---
+      const $btnConnectSaved = document.getElementById('connectSaved');
+      const $btnClearSession = document.getElementById('clearSession');
+      const $btnRefreshAccount = document.getElementById('refreshAccount');
+      const $meName = document.getElementById('meName');
+      const $meBio = document.getElementById('meBio');
+      const $meAvatar = document.getElementById('meAvatar');
+      const $btnStartUserLogin = document.getElementById('startUserLogin');
+      const $btnSubmitPhone = document.getElementById('submitPhone');
+      const $btnSubmitCode = document.getElementById('submitCode');
+      const $btnSubmitPassword = document.getElementById('submitPassword');
+      const $inpPhone = document.getElementById('phone');
+      const $inpCode = document.getElementById('code');
+      const $inpPassword = document.getElementById('password');
+
+      $btnConnectSaved?.addEventListener('click', ensureConnected);
+      $btnRefreshAccount?.addEventListener('click', async () => { await ensureConnected(); });
+      $btnClearSession?.addEventListener('click', () => {
+        try {
+          localStorage.clear();
+          sessionStorage.clear();
+          log('Saved session cleared');
+          $status.textContent = 'idle';
+        } catch (e) {
+          log('Failed to clear storage:', e?.message || e);
+        }
+      });
+
+      if ($btnStartUserLogin) {
+        $btnStartUserLogin.addEventListener('click', async () => {
+          try {
+            $status.textContent = 'authorizing…';
+            // Enable inputs for interactive flow
+            $inpPhone.disabled = false;
+            $inpCode.disabled = false;
+            $inpPassword.disabled = false;
+            $btnSubmitPhone.disabled = false;
+            $btnSubmitCode.disabled = false;
+            $btnSubmitPassword.disabled = false;
+
+            // Wire submit buttons to resolver callbacks
+            $btnSubmitPhone.onclick = () => { if (resolvePhone) { const v = ($inpPhone.value || '').trim(); log('Phone submitted'); resolvePhone(v); } };
+            $btnSubmitCode.onclick = () => { if (resolveCode) { const v = ($inpCode.value || '').trim(); log('Code submitted'); resolveCode(v); } };
+            $btnSubmitPassword.onclick = () => { if (resolvePassword) { const v = $inpPassword.value || ''; log('Password submitted'); resolvePassword(v); } };
+
+            await client.start({ phoneNumber, phoneCode, password, onError: (e) => log('Auth error:', e?.message || e) });
+          resetResolvers();
+            // verify and populate account UI
+            await ensureConnected();
+            log('Authorization completed');
+          } catch (err) {
+          resetResolvers();
+            $status.textContent = 'idle';
+            log('User login failed:', err?.message || String(err));
+          }
+        });
+      }
+
+      function updateAccountUI(meFull) {
+        try {
+          const user = meFull?.fullUser?.about !== undefined ? meFull.users?.find?.(u => u?.self) || meFull.users?.[0] : meFull?.user || meFull;
+          const about = meFull?.fullUser?.about || '';
+          const name = user ? [user.firstName, user.lastName].filter(Boolean).join(' ') || user.username || 'Me' : 'Me';
+          $meName.textContent = name;
+          $meBio.textContent = about;
+          // Try to fetch avatar
+          (async () => {
+            try {
+              const photos = await client.invoke(new telegram.Api.photos.GetUserPhotos({ userId: new telegram.Api.InputUserSelf(), offset: 0, maxId: 0, limit: 1 }));
+              const first = photos?.photos?.[0];
+              if (first && first.className === 'Photo') {
+                const loc = new telegram.Api.InputPhotoFileLocation({ id: first.id, accessHash: first.accessHash, fileReference: first.fileReference, thumbSize: 'a' });
+                const bytes = await client.downloadFile(loc, { dcId: first.dcId || undefined, fileSize: 0, partSizeKb: 64, workers: 1 });
+                if (bytes) {
+                  const blob = new Blob([bytes], { type: 'image/jpeg' });
+                  const url = URL.createObjectURL(blob);
+                  $meAvatar.style.backgroundImage = `url(${url})`;
+                  $meAvatar.style.backgroundSize = 'cover';
+                  $meAvatar.style.backgroundPosition = 'center';
+                }
+              }
+            } catch {}
+          })();
+        } catch {}
+      }
+
+      // --- Search and table state ---
+      const $rows = document.getElementById('rows');
+      const $loading = document.getElementById('loading');
+      const $end = document.getElementById('endOfList');
+      const $query = document.getElementById('searchQuery');
+      const $limit = document.getElementById('displayLimit');
+      const $hashtag = document.getElementById('hashtagMode');
+      const $commentText = document.getElementById('commentText');
+      const $startSearch = document.getElementById('startSearch');
+
+      let nextRate = 0;
+      let loading = false;
+      let finished = false;
+      let loadedCount = 0;
+      let currentQuery = '';
+      let useHashtag = false;
+      let targetDisplayLimit = 1000;
+
+      // peer/channel mapping by channelId -> { id, accessHash, username, title }
+      const channelIndex = new Map();
+
+      function bigIntToStringSafe(v) {
+        try { return typeof v === 'bigint' ? v.toString() : String(v); } catch { return String(v); }
+      }
+
+      function upsertChannels(chats) {
+        if (!Array.isArray(chats)) return;
+        for (const ch of chats) {
+          // Expecting constructorName 'Channel'
+          const id = ch?.id ?? ch?.channelId ?? ch?.channel_id;
+          if (id == null) continue;
+          const key = bigIntToStringSafe(id);
+          channelIndex.set(key, {
+            id: id,
+            accessHash: ch?.accessHash ?? ch?.access_hash,
+            username: ch?.username,
+            title: ch?.title
+          });
+        }
+      }
+
+      function getChannelFromPeerId(peerId) {
+        if (!peerId) return null;
+        const chId = peerId?.channelId ?? peerId?.channel_id;
+        if (chId == null) return null;
+        const key = bigIntToStringSafe(chId);
+        return channelIndex.get(key) || null;
+      }
+
+      function buildPostLink(channel, messageId) {
+        if (channel?.username) {
+          return `https://t.me/${channel.username}/${messageId}`;
+        }
+        // Fallback deep-link that opens Telegram client
+        return `tg://openmessage?chat_id=-100${bigIntToStringSafe(channel?.id || '')}&message_id=${messageId}`;
+      }
+
+      function formatDate(ts) {
+        try { return new Date((ts || 0) * 1000).toLocaleString(); } catch { return String(ts); }
+      }
+
+      function appendRows(messages) {
+        const frag = document.createDocumentFragment();
+        for (const m of messages) {
+          if (!m || m.className !== 'Message') continue;
+          const channel = getChannelFromPeerId(m.peerId);
+
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td style="padding:8px; border-bottom:1px solid #eee;">${channel?.title || channel?.username || 'Unknown channel'}</td>
+            <td style="padding:8px; border-bottom:1px solid #eee;">${m.id}</td>
+            <td style="padding:8px; border-bottom:1px solid #eee;">${formatDate(m.date)}</td>
+            <td style="padding:8px; border-bottom:1px solid #eee; max-width:480px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;" title="${(m.message || '').replace(/"/g, '\\"')}">${(m.message || '').slice(0, 160)}</td>
+            <td style="padding:8px; border-bottom:1px solid #eee;"><a href="${buildPostLink(channel, m.id)}" target="_blank" rel="noopener">Open</a></td>
+            <td style="padding:8px; border-bottom:1px solid #eee;"><button class="commentBtn">Comment</button></td>
+          `;
+
+          const btn = tr.querySelector('.commentBtn');
+          btn.addEventListener('click', async () => {
+            try {
+              if (!channel?.id || !channel?.accessHash) {
+                alert('Cannot resolve channel peer');
+                return;
+              }
+              const peer = new telegram.Api.InputPeerChannel({ channelId: channel.id, accessHash: channel.accessHash });
+              const replyTo = new telegram.Api.InputReplyToMessage({ id: m.id });
+              const text = ($commentText.value || '').trim();
+              if (!text) { alert('Set comment text in Settings'); return; }
+              const req = new telegram.Api.messages.SendMessage({ peer, message: text, replyTo });
+              await client.invoke(req);
+              alert('Comment sent');
+            } catch (e) {
+              console.error(e);
+              alert('Failed to send comment: ' + (e?.message || String(e)));
+            }
+          });
+
+          frag.appendChild(tr);
+          loadedCount += 1;
+        }
+        $rows.appendChild(frag);
+      }
+
+      async function loadNextPage() {
+        if (loading || finished) return;
+        if (loadedCount >= targetDisplayLimit) return;
+        loading = true; $loading.style.display = '';
+        try {
+          const query = currentQuery.trim();
+          const req = new telegram.Api.channels.SearchPosts({
+            hashtag: useHashtag ? query : "",
+            query: useHashtag ? "" : query,
+            offsetRate: nextRate || 0,
+            offsetPeer: new telegram.Api.InputPeerEmpty(),
+            offsetId: 0,
+            limit: 100
+          });
+          const res = await client.invoke(req);
+          upsertChannels(res?.chats || []);
+          const msgs = Array.isArray(res?.messages) ? res.messages : [];
+          appendRows(msgs);
+          nextRate = res?.nextRate || 0;
+          if ((msgs.length === 0) || !nextRate) {
+            finished = true;
+            $end.style.display = '';
+          }
+        } catch (e) {
+          log('Search error:', e?.message || e);
+          finished = true; $end.style.display = '';
+        } finally {
+          loading = false; $loading.style.display = 'none';
+        }
+      }
+
+      function resetResults() {
+        $rows.innerHTML = '';
+        nextRate = 0; loading = false; finished = false; loadedCount = 0;
+        $loading.style.display = 'none'; $end.style.display = 'none';
+      }
+
+      async function start() {
+        const connected = await ensureConnected();
+        if (!connected) {
+          log('Please authenticate using your existing flow, then retry.');
+          return;
+        }
+        currentQuery = $query.value || '';
+        useHashtag = !!$hashtag.checked;
+        targetDisplayLimit = Math.max(50, Math.min(5000, Number($limit.value) || 1000));
+        resetResults();
+        // Prefetch until we reach the display limit or run out
+        while (!finished && loadedCount < targetDisplayLimit) {
+          await loadNextPage();
+          // Yield to UI
+          await new Promise(r => setTimeout(r));
+        }
+      }
+
+      // Scroll-driven pagination (infinite scroll)
+      const scrollContainer = document.querySelector('fieldset:last-of-type > div[style*="overflow:auto"]');
+      scrollContainer.addEventListener('scroll', async () => {
+        const nearBottom = scrollContainer.scrollTop + scrollContainer.clientHeight >= scrollContainer.scrollHeight - 200;
+        if (nearBottom) await loadNextPage();
+      });
+
+      $startSearch.addEventListener('click', start);
+
+      // Optionally attempt an automatic connect on load
+      (async () => {
+        await ensureConnected();
+      })();
+    </script>
+  </body>
+</html>
+
+
