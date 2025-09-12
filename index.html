@@ -10,6 +10,7 @@
       legend { padding: 0 8px; color: #333; }
       label { display: block; margin: 8px 0 4px; font-size: 14px; color: #333; }
       input { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; }
+      textarea { width: 100%; box-sizing: border-box; padding: 8px 10px; border-radius: 6px; border: 1px solid #ccc; font-family: inherit; }
       button { padding: 8px 12px; border-radius: 6px; border: 1px solid #ccc; background: #f7f7f7; cursor: pointer; }
       button:disabled { opacity: 0.6; cursor: not-allowed; }
       .row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -18,15 +19,34 @@
       #status { font-weight: 600; }
       #log { white-space: pre-wrap; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12px; line-height: 1.5; max-height: 260px; overflow: auto; margin: 0; }
       small.muted { color: #666; }
+      /* Inline checkbox label */
+      .checkbox-inline { display: inline-flex; align-items: center; gap: 6px; margin: 0; white-space: nowrap; margin-top: 8px; }
     </style>
   </head>
   <body>
-    <h2>cherpala.ai</h2>
-    <p><small class="muted">Enter your Telegram API credentials. You can authenticate as a user (phone + code [+ password if 2FA]) or as a bot (bot token).</small></p>
+    <h2>OKolo | cherpala</h2>
+    <p><small class="muted">Enter your Telegram API credentials. You can authenticate as a user (phone + code [+ password if 2FA])</small></p>
+
+    <fieldset>
+      <legend>Account</legend>
+      <div class="row">
+        <div>
+          <div id="meAvatar" style="width:64px;height:64px;border-radius:50%;background:#eee;"></div>
+        </div>
+        <div>
+          <div id="meName"><small class="muted">Not authorized</small></div>
+          <div id="meBio" style="color:#666"></div>
+        </div>
+      </div>
+      <div class="actions">
+        <button id="connectSaved" type="button">Connect with saved session</button>
+        <button id="clearSession" type="button">Clear saved session</button>
+      </div>
+    </fieldset>
     <fieldset>
       <legend>User Login (Phone)</legend>
       <label for="phone">Phone number (international format, e.g. +15551234567)</label>
-      <input id="phone" type="text" placeholder="+15551234567" autocomplete="tel">
+      <input id="phone" type="text" placeholder="+15551234567" autocomplete="tel" disabled>
 
       <div class="row">
         <div>
@@ -47,27 +67,7 @@
       </div>
     </fieldset>
 
-    <div id="logWrap">
-      <div>Connection: <span id="status">idle</span></div>
-      <pre id="log"></pre>
-    </div>
 
-    <fieldset>
-      <legend>Account</legend>
-      <div class="row">
-        <div>
-          <div id="meAvatar" style="width:64px;height:64px;border-radius:50%;background:#eee;"></div>
-        </div>
-        <div>
-          <div id="meName"><small class="muted">Not authorized</small></div>
-          <div id="meBio" style="color:#666"></div>
-        </div>
-      </div>
-      <div class="actions">
-        <button id="connectSaved" type="button">Connect with saved session</button>
-        <button id="clearSession" type="button">Clear saved session</button>
-      </div>
-    </fieldset>
 
     <fieldset>
       <legend>Settings</legend>
@@ -83,18 +83,28 @@
       </div>
       <div class="row">
         <div>
-          <label><input id="hashtagMode" type="checkbox"> Treat query as hashtag</label>
+          <label class="checkbox-inline"><input id="hashtagMode" type="checkbox"> hashtag simple search (no tokens consumed) </label>
         </div>
         <div>
           <label for="commentText">Comment text</label>
-          <input id="commentText" type="text" placeholder="Your comment to post under items">
+          <textarea id="commentText" rows="3" placeholder="Your comment to post under items"></textarea>
         </div>
       </div>
       <div class="actions">
         <button id="startSearch" type="button">Start search</button>
-        <button id="sendAll" type="button" disabled title="Not implemented yet">Send to all</button>
+        <button id="sendAll" type="button">Send to all (risky)</button>
+        <button id="downloadCsv" type="button">Download CSV</button>
+        <div id="bulkProgress" style="flex:1; height:10px; background:#eee; border-radius:6px; overflow:hidden; display:none; min-width:160px;">
+          <div id="bulkBar" style="height:100%; width:0%; background:#4caf50;"></div>
+        </div>
+        <span id="bulkLabel" style="display:none; font-size:12px; color:#666;">0 / 0</span>
       </div>
     </fieldset>
+
+    <div id="logWrap" style="margin-bottom: 16px;">
+      <div>Connection: <span id="status">idle</span></div>
+      <pre id="log"></pre>
+    </div>
 
     <fieldset>
       <legend>Results</legend>
@@ -232,12 +242,12 @@
             $btnSubmitPassword.onclick = () => { if (resolvePassword) { const v = $inpPassword.value || ''; log('Password submitted'); resolvePassword(v); } };
 
             await client.start({ phoneNumber, phoneCode, password, onError: (e) => log('Auth error:', e?.message || e) });
-            resetResolvers();
+          resetResolvers();
             // verify and populate account UI
             await ensureConnected();
             log('Authorization completed');
           } catch (err) {
-            resetResolvers();
+          resetResolvers();
             client.disconnect();
             $status.textContent = 'idle';
             log('User login failed:', err?.message || String(err));
@@ -282,8 +292,17 @@
       const $hashtag = document.getElementById('hashtagMode');
       const $commentText = document.getElementById('commentText');
       const $startSearch = document.getElementById('startSearch');
+      const $sendAll = document.getElementById('sendAll');
+      const $bulkProgress = document.getElementById('bulkProgress');
+      const $bulkBar = document.getElementById('bulkBar');
+      const $bulkLabel = document.getElementById('bulkLabel');
+      const $downloadCsv = document.getElementById('downloadCsv');
 
       let nextRate = 0;
+      let offsetIdOffset = 0; // messages.MessagesSlice may return offset_id_offset
+      let prevNextRate = -1;
+      let prevOffsetIdOffset = -1;
+      let noProgressStreak = 0;
       let loading = false;
       let finished = false;
       let loadedCount = 0;
@@ -293,9 +312,30 @@
 
       // peer/channel mapping by channelId -> { id, accessHash, username, title }
       const channelIndex = new Map();
+      const seenMessageKeys = new Set(); // `${channelId}:${msgId}` to avoid duplicates
 
       function bigIntToStringSafe(v) {
         try { return typeof v === 'bigint' ? v.toString() : String(v); } catch { return String(v); }
+      }
+
+      function toBigIntSafe(v) {
+        try {
+          if (typeof v === 'bigint') return v;
+          if (typeof v === 'string') return BigInt(v);
+          if (typeof v === 'number') return BigInt(v);
+          if (v && typeof v === 'object' && typeof v.toString === 'function') return BigInt(v.toString());
+        } catch {}
+        return null;
+      }
+
+      function generateRandomBigInt64() {
+        const buf = new Uint8Array(8);
+        (self.crypto || window.crypto).getRandomValues(buf);
+        let out = 0n;
+        for (let i = 0; i < 8; i++) {
+          out |= BigInt(buf[i]) << (8n * BigInt(i));
+        }
+        return out;
       }
 
       function upsertChannels(chats) {
@@ -336,9 +376,18 @@
 
       function appendRows(messages) {
         const frag = document.createDocumentFragment();
+        let added = 0;
         for (const m of messages) {
           if (!m || m.className !== 'Message') continue;
           const channel = getChannelFromPeerId(m.peerId);
+          const chId = m?.peerId?.channelId ?? m?.peerId?.channel_id;
+          if (chId != null) {
+            const key = `${bigIntToStringSafe(chId)}:${m.id}`;
+            if (seenMessageKeys.has(key)) {
+              continue; // skip duplicate
+            }
+            seenMessageKeys.add(key);
+          }
 
           const tr = document.createElement('tr');
           tr.innerHTML = `
@@ -350,31 +399,233 @@
             <td style="padding:8px; border-bottom:1px solid #eee;"><button class="commentBtn">Comment</button></td>
           `;
 
+          // Store needed metadata for bulk operations
+          tr.dataset.channelId = channel?.id ? bigIntToStringSafe(channel.id) : '';
+          tr.dataset.accessHash = channel?.accessHash ? bigIntToStringSafe(channel.accessHash) : '';
+          tr.dataset.username = channel?.username || '';
+          tr.dataset.title = channel?.title || '';
+          tr.dataset.postId = String(m.id);
+          if (m.replies?.channelId) tr.dataset.discussionChannelId = bigIntToStringSafe(m.replies.channelId);
+
           const btn = tr.querySelector('.commentBtn');
           btn.addEventListener('click', async () => {
             try {
-              if (!channel?.id || !channel?.accessHash) {
-                alert('Cannot resolve channel peer');
-                return;
-              }
-              const peer = new telegram.Api.InputPeerChannel({ channelId: channel.id, accessHash: channel.accessHash });
-              const replyTo = new telegram.Api.InputReplyToMessage({ id: m.id });
-              const text = ($commentText.value || '').trim();
-              if (!text) { alert('Set comment text in Settings'); return; }
-              const req = new telegram.Api.messages.SendMessage({ peer, message: text, replyTo });
-              await client.invoke(req);
-              alert('Comment sent');
+              await sendCommentForDataset(tr.dataset);
+              const link = tr.querySelector('a')?.href || buildPostLink({ username: tr.dataset.username, id: tr.dataset.channelId }, Number(tr.dataset.postId));
+              log('Comment sent:', link);
             } catch (e) {
               console.error(e);
-              alert('Failed to send comment: ' + (e?.message || String(e)));
+              log('Failed to send comment:', e?.message || String(e));
             }
           });
 
           frag.appendChild(tr);
           loadedCount += 1;
+          added += 1;
         }
         $rows.appendChild(frag);
+        return added;
       }
+
+      async function sendCommentForDataset(ds) {
+        const text = ($commentText.value || '').trim();
+        if (!text) throw new Error('Set comment text in Settings');
+        const original = { id: ds.channelId, accessHash: ds.accessHash, username: ds.username, title: ds.title };
+        const link = (ds.username ? `https://t.me/${ds.username}/${ds.postId}` : `tg://openmessage?chat_id=-100${ds.channelId}&message_id=${ds.postId}`);
+        log('Sending comment:', link);
+
+        const postIdNum = Number(ds.postId);
+        let lastErr = null;
+
+        // 1) Try to join original channel and reply directly to the post
+        try {
+          const chIdBig = toBigIntSafe(original.id);
+          const hashBig = toBigIntSafe(original.accessHash);
+          if (!chIdBig || !hashBig) throw new Error('Invalid channel identifiers');
+          try {
+            const inputCh = new telegram.Api.InputChannel({ channelId: chIdBig, accessHash: hashBig });
+            await client.invoke(new telegram.Api.channels.JoinChannel({ channel: inputCh }));
+          } catch (_) {}
+          const peer = new telegram.Api.InputPeerChannel({ channelId: chIdBig, accessHash: hashBig });
+          const randomId = generateRandomBigInt64();
+          const replyTo = new telegram.Api.InputReplyToMessage({ replyToMsgId: postIdNum });
+          const req = new telegram.Api.messages.SendMessage({ peer, message: text, replyTo, randomId });
+          await client.invoke(req);
+          return;
+        } catch (e) {
+          lastErr = e;
+          log('Direct reply failed:', e?.message || String(e));
+        }
+
+        // 2) Resolve discussion chat and reply there (topMsgId)
+        try {
+          let discussion = await resolveDiscussionPeer(original, postIdNum);
+          if (!discussion) discussion = await getLinkedDiscussionPeer(original);
+          if (!discussion?.id || !discussion?.accessHash) throw new Error('No discussion chat available');
+          const dIdBig = toBigIntSafe(discussion.id);
+          const dHashBig = toBigIntSafe(discussion.accessHash);
+          if (!dIdBig || !dHashBig) throw new Error('Invalid discussion identifiers');
+          try {
+            const inputCh = new telegram.Api.InputChannel({ channelId: dIdBig, accessHash: dHashBig });
+            await client.invoke(new telegram.Api.channels.JoinChannel({ channel: inputCh }));
+          } catch (_) {}
+          const peer = new telegram.Api.InputPeerChannel({ channelId: dIdBig, accessHash: dHashBig });
+          const randomId = generateRandomBigInt64();
+          const replyTo = new telegram.Api.InputReplyToMessage({ topMsgId: postIdNum });
+          const req = new telegram.Api.messages.SendMessage({ peer, message: text, replyTo, randomId });
+          await client.invoke(req);
+          return;
+        } catch (e2) {
+          lastErr = e2;
+          log('Discussion reply failed:', e2?.message || String(e2));
+        }
+
+        if (lastErr) throw lastErr;
+      }
+
+      async function resolveDiscussionPeer(original, postId) {
+        try {
+          const chIdBig = toBigIntSafe(original.id);
+          const hashBig = toBigIntSafe(original.accessHash);
+          if (!chIdBig || !hashBig) return undefined;
+          const originPeer = new telegram.Api.InputPeerChannel({ channelId: chIdBig, accessHash: hashBig });
+          const res = await client.invoke(new telegram.Api.messages.GetDiscussionMessage({ peer: originPeer, msgId: postId }));
+          const chats = res?.chats || [];
+          // Prefer megagroup different from origin
+          let candidate = undefined;
+          for (const chat of chats) {
+            if (chat?.className === 'Channel' && chat?.megagroup && bigIntToStringSafe(chat.id) !== bigIntToStringSafe(original.id)) {
+              candidate = chat;
+              break;
+            }
+          }
+          // Sometimes the discussion chat is returned in res.messages via peerId
+          if (!candidate && Array.isArray(res?.messages)) {
+            for (const msg of res.messages) {
+              const p = msg?.peerId;
+              if (p?.channelId) {
+                const key = bigIntToStringSafe(p.channelId);
+                const fallback = chats.find(c => bigIntToStringSafe(c.id) === key);
+                if (fallback?.megagroup && bigIntToStringSafe(fallback.id) !== bigIntToStringSafe(original.id)) {
+                  candidate = fallback; break;
+                }
+              }
+            }
+          }
+          if (!candidate) return undefined;
+          return { id: candidate.id, accessHash: candidate.accessHash, username: candidate.username, title: candidate.title };
+        } catch (e) {
+          // If API not available or private, silently ignore
+          return undefined;
+        }
+      }
+
+      async function getLinkedDiscussionPeer(original) {
+        try {
+          const chIdBig = toBigIntSafe(original.id);
+          const hashBig = toBigIntSafe(original.accessHash);
+          if (!chIdBig || !hashBig) return undefined;
+          const inputCh = new telegram.Api.InputChannel({ channelId: chIdBig, accessHash: hashBig });
+          const res = await client.invoke(new telegram.Api.channels.GetFullChannel({ channel: inputCh }));
+          const full = res?.fullChat;
+          const linkedId = full?.linkedChatId || full?.linked_chat_id;
+          if (!linkedId) return undefined;
+          const chats = res?.chats || [];
+          const candidate = chats.find(c => bigIntToStringSafe(c.id) === bigIntToStringSafe(linkedId));
+          if (!candidate) return undefined;
+          return { id: candidate.id, accessHash: candidate.accessHash, username: candidate.username, title: candidate.title };
+        } catch (e) {
+          return undefined;
+        }
+      }
+
+      function collectRows() {
+        const rows = [];
+        const trs = $rows.querySelectorAll('tr');
+        for (const tr of trs) {
+          const idCell = tr.children[1]?.textContent?.trim();
+          const linkCell = tr.children[4]?.querySelector('a');
+          const actionBtn = tr.querySelector('.commentBtn');
+          if (!idCell || !linkCell || !actionBtn) continue;
+          rows.push({ tr, id: Number(idCell), actionBtn });
+        }
+        return rows;
+      }
+
+      async function sendCommentForMessageRow(tr) {
+        await sendCommentForDataset(tr.dataset);
+        const link = tr.querySelector('a')?.href || buildPostLink({ username: tr.dataset.username, id: tr.dataset.channelId }, Number(tr.dataset.postId));
+        log('Comment sent:', link);
+      }
+
+      function updateBulkProgress(done, total) {
+        const pct = total ? Math.round((done / total) * 100) : 0;
+        $bulkBar.style.width = pct + '%';
+        $bulkLabel.textContent = `${done} / ${total}`;
+      }
+
+      $sendAll.addEventListener('click', async () => {
+        try {
+          const rows = collectRows();
+          if (!rows.length) { alert('No rows to send'); return; }
+          $bulkProgress.style.display = '';
+          $bulkLabel.style.display = '';
+          updateBulkProgress(0, rows.length);
+          let sent = 0;
+          for (const { tr } of rows) {
+            try {
+              await sendCommentForMessageRow(tr);
+            } catch (e) {
+              log('Bulk send error:', e?.message || e);
+            }
+            sent += 1;
+            updateBulkProgress(sent, rows.length);
+            await new Promise(r => setTimeout(r, 1000)); // throttle: 1/sec
+          }
+          log('Bulk send finished:', `${rows.length} attempted`);
+        } catch (e) {
+          log('Bulk send failed:', e?.message || e);
+        }
+      });
+
+      function tableToCsv() {
+        const rows = [];
+        // Header
+        rows.push(['Channel', 'Msg ID', 'Date', 'Text', 'Link']);
+        const trs = $rows.querySelectorAll('tr');
+        for (const tr of trs) {
+          const channel = tr.children[0]?.textContent?.trim() || '';
+          const id = tr.children[1]?.textContent?.trim() || '';
+          const date = tr.children[2]?.textContent?.trim() || '';
+          const text = tr.children[3]?.textContent?.trim() || '';
+          const link = tr.children[4]?.querySelector('a')?.href || '';
+          rows.push([channel, id, date, text, link]);
+        }
+        // CSV escape
+        const csv = rows.map(r => r.map(v => {
+          const s = String(v).replace(/"/g, '""');
+          return `"${s}"`;
+        }).join(',')).join('\n');
+        return csv;
+      }
+
+      $downloadCsv.addEventListener('click', () => {
+        try {
+          const csv = tableToCsv();
+          const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          const ts = new Date().toISOString().replace(/[:.]/g, '-');
+          a.download = `results-${ts}.csv`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        } catch (e) {
+          log('CSV download failed:', e?.message || e);
+        }
+      });
 
       async function loadNextPage() {
         if (loading || finished) return;
@@ -387,15 +638,24 @@
             query: useHashtag ? "" : query,
             offsetRate: nextRate || 0,
             offsetPeer: new telegram.Api.InputPeerEmpty(),
-            offsetId: 0,
-            limit: 100
+            offsetId: offsetIdOffset || 0,
+            limit: 1000
           });
           const res = await client.invoke(req);
           upsertChannels(res?.chats || []);
           const msgs = Array.isArray(res?.messages) ? res.messages : [];
-          appendRows(msgs);
+          const added = appendRows(msgs);
           nextRate = res?.nextRate || 0;
-          if ((msgs.length === 0) || !nextRate) {
+          offsetIdOffset = res?.offsetIdOffset || 0;
+          // Detect no progress (tokens unchanged or nothing new added)
+          if ((prevNextRate === nextRate && prevOffsetIdOffset === offsetIdOffset) || added === 0) {
+            noProgressStreak += 1;
+          } else {
+            noProgressStreak = 0;
+          }
+          prevNextRate = nextRate; prevOffsetIdOffset = offsetIdOffset;
+
+          if ((msgs.length === 0) || (!nextRate && !offsetIdOffset) || noProgressStreak >= 2) {
             finished = true;
             $end.style.display = '';
           }
@@ -409,7 +669,7 @@
 
       function resetResults() {
         $rows.innerHTML = '';
-        nextRate = 0; loading = false; finished = false; loadedCount = 0;
+        nextRate = 0; loading = false; finished = false; loadedCount = 0; seenMessageKeys.clear();
         $loading.style.display = 'none'; $end.style.display = 'none';
       }
 
