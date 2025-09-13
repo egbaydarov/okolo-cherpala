@@ -27,6 +27,25 @@ AppNS.getChannelFromPeerId = function getChannelFromPeerId(peerId) {
   return AppNS.searchState.channelIndex.get(key) || null;
 };
 
+// Check search flood status and return a normalized object
+AppNS.checkSearchPostsFlood = async function checkSearchPostsFlood(query) {
+  try {
+    const res = await AppNS.client.invoke(new telegram.Api.channels.CheckSearchPostsFlood({ query }));
+    if (!res) return null;
+    return {
+      query,
+      queryIsFree: !!res.queryIsFree,
+      totalDaily: res.totalDaily,
+      remains: res.remains,
+      waitTill: res.waitTill,
+      starsAmount: Number(res.starsAmount?.toJSNumber?.() ?? res.starsAmount ?? 0)
+    };
+  } catch (e) {
+    // If API not available on server, treat as no flood info
+    return null;
+  }
+};
+
 AppNS.appendRows = function appendRows(messages) {
   const st = AppNS.searchState;
   const { rows } = AppNS.dom;
@@ -130,18 +149,37 @@ AppNS.loadNextPage = async function loadNextPage() {
   st.loading = true; loading.style.display = '';
   try {
     const query = st.currentQuery.trim();
+
+    // Check flood limits before searching
+    let allowPaidStars = 0n;
+    const flood = await AppNS.checkSearchPostsFlood(query);
+    if (flood) { st.searchFlood = flood; allowPaidStars = BigInt(flood.starsAmount || 0); }
+
     const req = new telegram.Api.channels.SearchPosts({
       hashtag: st.useHashtag ? query : "",
       query: st.useHashtag ? "" : query,
       offsetRate: st.nextRate || 0,
       offsetPeer: new telegram.Api.InputPeerEmpty(),
       offsetId: st.offsetIdOffset || 0,
-      limit: st.targetDisplayLimit ?? 100
+      limit: st.targetDisplayLimit ?? 100,
+      allowPaidStars
     });
     const res = await AppNS.client.invoke(req);
     AppNS.upsertChannels(res?.chats || []);
-    const msgs = Array.isArray(res?.messages) ? res.messages : [];
-    const added = AppNS.appendRows(msgs);
+    const allMsgs = Array.isArray(res?.messages) ? res.messages : [];
+    // Filter by date range if provided
+    let filtered = allMsgs;
+    const fromTs = AppNS.searchState.fromTs;
+    const toTs = AppNS.searchState.toTs;
+    if (fromTs != null || toTs != null) {
+      filtered = allMsgs.filter(m => {
+        const ts = m?.date || 0;
+        if (fromTs != null && ts < fromTs) return false;
+        if (toTs != null && ts > toTs) return false;
+        return true;
+      });
+    }
+    const added = AppNS.appendRows(filtered);
     st.nextRate = res?.nextRate || 0;
     st.offsetIdOffset = res?.offsetIdOffset || 0;
     if ((st.prevNextRate === st.nextRate && st.prevOffsetIdOffset === st.offsetIdOffset) || added === 0) {
@@ -150,7 +188,10 @@ AppNS.loadNextPage = async function loadNextPage() {
       st.noProgressStreak = 0;
     }
     st.prevNextRate = st.nextRate; st.prevOffsetIdOffset = st.offsetIdOffset;
-    if ((msgs.length === 0) || (!st.nextRate && !st.offsetIdOffset) || st.noProgressStreak >= 2) {
+    // Stop if no more results or we've paged past the lower date bound
+    const oldestMsg = allMsgs[allMsgs.length - 1];
+    const reachedLowerBound = oldestMsg && fromTs != null ? (oldestMsg.date < fromTs) : false;
+    if ((allMsgs.length === 0) || reachedLowerBound || (!st.nextRate && !st.offsetIdOffset) || st.noProgressStreak >= 2) {
       st.finished = true;
       end.style.display = '';
     }

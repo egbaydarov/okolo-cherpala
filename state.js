@@ -13,6 +13,9 @@
     sessionStorageKey: "account1"
   };
 
+  // Unique tab identifier (per-page-load)
+  App.tabId = Number(Math.random().toString().substring(2));
+
   // DOM references
   App.dom = {
     status: document.getElementById('status'),
@@ -39,6 +42,11 @@
     limit: document.getElementById('displayLimit'),
     hashtag: document.getElementById('hashtagMode'),
     commentText: document.getElementById('commentText'),
+    dateFrom: document.getElementById('dateFrom'),
+    dateTo: document.getElementById('dateTo'),
+    shortcutDay: document.getElementById('shortcutDay'),
+    shortcutWeek: document.getElementById('shortcutWeek'),
+    shortcutMonth: document.getElementById('shortcutMonth'),
     startSearch: document.getElementById('startSearch'),
     sendAll: document.getElementById('sendAll'),
     stopBulk: document.getElementById('stopBulk'),
@@ -62,10 +70,14 @@
     currentQuery: '',
     useHashtag: false,
     targetDisplayLimit: 1000,
+    fromTs: null,
+    toTs: null,
     channelIndex: new Map(),
     seenMessageKeys: new Set(),
     displayedChannelIds: new Set(),
-    bulkCancelRequested: false
+    bulkCancelRequested: false,
+    // Last search flood data (if any)
+    searchFlood: null
   };
   // Membership cache (channelId string -> 'member' | 'not' | 'banned')
   App.membershipStatus = new Map();

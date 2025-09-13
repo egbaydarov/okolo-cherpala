@@ -90,6 +90,21 @@
           <textarea id="commentText" rows="3" placeholder="Your comment to post under items"></textarea>
         </div>
       </div>
+      <div class="row">
+        <div>
+          <label for="dateFrom">From (UTC)</label>
+          <input id="dateFrom" type="text" placeholder="YYYY-MM-DD or YYYY-MM-DD HH:mm">
+        </div>
+        <div>
+          <label for="dateTo">To (UTC)</label>
+          <input id="dateTo" type="text" placeholder="YYYY-MM-DD or YYYY-MM-DD HH:mm">
+        </div>
+      </div>
+      <div class="actions">
+        <button id="shortcutDay" type="button">Last day</button>
+        <button id="shortcutWeek" type="button">Last week</button>
+        <button id="shortcutMonth" type="button">Last month</button>
+      </div>
       <div class="actions">
         <button id="startSearch" type="button">Start search</button>
         <button id="sendAll" type="button">Send to all (risky)</button>

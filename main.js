@@ -53,6 +53,15 @@ const AppNS = window.App;
     st.currentQuery = AppNS.dom.query.value || '';
     st.useHashtag = !!AppNS.dom.hashtag.checked;
     st.targetDisplayLimit = Math.max(10, Math.min(5000, Number(AppNS.dom.limit.value) || 1000));
+    // Parse date range (UTC). Defaults: now .. last year
+    const now = new Date();
+    const oneYearAgo = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+    const inFrom = AppNS.dom.dateFrom?.value || '';
+    const inTo = AppNS.dom.dateTo?.value || '';
+    let fromTs = AppNS.parseDateInputToUnix(inFrom) ?? Math.floor(oneYearAgo.getTime() / 1000);
+    let toTs = AppNS.parseDateInputToUnix(inTo) ?? Math.floor(now.getTime() / 1000);
+    if (fromTs && toTs && fromTs > toTs) { const tmp = fromTs; fromTs = toTs; toTs = tmp; }
+    st.fromTs = fromTs; st.toTs = toTs;
     AppNS.resetResults();
     while (!st.finished && st.loadedCount < st.targetDisplayLimit) {
       await AppNS.loadNextPage();
@@ -110,7 +119,33 @@ const AppNS = window.App;
   });
 
   // Auto-connect on load
-  (async () => { await AppNS.ensureConnected(); })();
+  (async () => {
+    await AppNS.ensureConnected();
+    try {
+      // Initialize default date inputs: now to last year (UTC)
+      const now = new Date();
+      const lastYear = new Date(Date.UTC(now.getUTCFullYear() - 1, now.getUTCMonth(), now.getUTCDate(), 0, 0, 0));
+      if (AppNS.dom.dateTo) AppNS.dom.dateTo.value = AppNS.formatUtcForInput(now);
+      if (AppNS.dom.dateFrom) AppNS.dom.dateFrom.value = AppNS.formatUtcForInput(lastYear);
+    } catch (_) {}
+  })();
+
+  // Shortcuts
+  if (AppNS.dom.shortcutDay) AppNS.dom.shortcutDay.addEventListener('click', () => {
+    const { from, to } = AppNS.getLastRangeUnix('day');
+    if (AppNS.dom.dateFrom) AppNS.dom.dateFrom.value = AppNS.formatUtcForInput(new Date(from * 1000));
+    if (AppNS.dom.dateTo) AppNS.dom.dateTo.value = AppNS.formatUtcForInput(new Date(to * 1000));
+  });
+  if (AppNS.dom.shortcutWeek) AppNS.dom.shortcutWeek.addEventListener('click', () => {
+    const { from, to } = AppNS.getLastRangeUnix('week');
+    if (AppNS.dom.dateFrom) AppNS.dom.dateFrom.value = AppNS.formatUtcForInput(new Date(from * 1000));
+    if (AppNS.dom.dateTo) AppNS.dom.dateTo.value = AppNS.formatUtcForInput(new Date(to * 1000));
+  });
+  if (AppNS.dom.shortcutMonth) AppNS.dom.shortcutMonth.addEventListener('click', () => {
+    const { from, to } = AppNS.getLastRangeUnix('month');
+    if (AppNS.dom.dateFrom) AppNS.dom.dateFrom.value = AppNS.formatUtcForInput(new Date(from * 1000));
+    if (AppNS.dom.dateTo) AppNS.dom.dateTo.value = AppNS.formatUtcForInput(new Date(to * 1000));
+  });
 })();
 })();
 
