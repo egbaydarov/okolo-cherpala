@@ -87,6 +87,19 @@
     const from = Math.floor(fromDate.getTime() / 1000);
     return { from, to };
   };
+
+  AppNS.updateStats = function updateStats() {
+    try {
+      const st = AppNS.searchState;
+      const { statTotal, statToday, statWeek, statMonth, statYear } = AppNS.dom;
+      if (!statTotal || !statToday || !statWeek || !statMonth || !statYear) return;
+      statTotal.textContent = String(st.stats.total || 0);
+      statToday.textContent = String(st.stats.today || 0);
+      statWeek.textContent = String(st.stats.week || 0);
+      statMonth.textContent = String(st.stats.month || 0);
+      statYear.textContent = String(st.stats.year || 0);
+    } catch (_) {}
+  };
 })();
 
 

@@ -24,14 +24,14 @@
 
   // Telegram client lifecycle
   AppNS.session = new telegram.sessions.CallbackSession(AppNS.getExistingSessionData(), AppNS.onSessionUpdate);
+  AppNS.session.setDC(2);
   AppNS.client = new telegram.TelegramClient(
     AppNS.session,
     AppNS.config.apiId,
     AppNS.config.apiHash,
     {
       requestRetries: 1,
-      connectionRetries: 1,
-      connectionoptions: { ip: '149.154.167.50', port: 443 },
+      connectionRetries: 2,
       useWSS: true
     }
   );

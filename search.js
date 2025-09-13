@@ -51,6 +51,12 @@ AppNS.appendRows = function appendRows(messages) {
   const { rows } = AppNS.dom;
   const frag = document.createDocumentFragment();
   let added = 0;
+  // Precompute thresholds for stats
+  const now = Math.floor(Date.now() / 1000);
+  const dayAgo = now - 24 * 3600;
+  const weekAgo = now - 7 * 24 * 3600;
+  const monthAgo = Math.floor(new Date(new Date().setUTCMonth(new Date().getUTCMonth() - 1)).getTime() / 1000);
+  const yearAgo = Math.floor(new Date(new Date().setUTCFullYear(new Date().getUTCFullYear() - 1)).getTime() / 1000);
   for (const m of messages) {
     if (!m || m.className !== 'Message') continue;
     const channel = AppNS.getChannelFromPeerId(m.peerId);
@@ -128,8 +134,16 @@ AppNS.appendRows = function appendRows(messages) {
     frag.appendChild(tr);
     st.loadedCount += 1;
     added += 1;
+    // Update stats
+    st.stats.total += 1;
+    const ts = m.date || 0;
+    if (ts >= dayAgo) st.stats.today += 1;
+    if (ts >= weekAgo) st.stats.week += 1;
+    if (ts >= monthAgo) st.stats.month += 1;
+    if (ts >= yearAgo) st.stats.year += 1;
   }
   rows.appendChild(frag);
+  AppNS.updateStats();
   return added;
 };
 
@@ -139,6 +153,9 @@ AppNS.resetResults = function resetResults() {
   rows.innerHTML = '';
   st.nextRate = 0; st.loading = false; st.finished = false; st.loadedCount = 0; st.seenMessageKeys.clear();
   loading.style.display = 'none'; end.style.display = 'none';
+  // Reset stats
+  st.stats.total = 0; st.stats.today = 0; st.stats.week = 0; st.stats.month = 0; st.stats.year = 0;
+  AppNS.updateStats();
 };
 
 AppNS.loadNextPage = async function loadNextPage() {

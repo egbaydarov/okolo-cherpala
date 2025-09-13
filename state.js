@@ -8,8 +8,8 @@
 
   // Configuration (keep separate from UI/auth logic)
   App.config = {
-    apiId: 20420825,
-    apiHash: "ee1672f1a070db396378556012f0aeda",
+    apiId: 2496,
+    apiHash: "8da85b0d5bfe62527e5b244c209159c3",
     sessionStorageKey: "account1"
   };
 
@@ -77,7 +77,15 @@
     displayedChannelIds: new Set(),
     bulkCancelRequested: false,
     // Last search flood data (if any)
-    searchFlood: null
+    searchFlood: null,
+    // Stats counters
+    stats: {
+      total: 0,
+      today: 0,
+      week: 0,
+      month: 0,
+      year: 0
+    }
   };
   // Membership cache (channelId string -> 'member' | 'not' | 'banned')
   App.membershipStatus = new Map();
